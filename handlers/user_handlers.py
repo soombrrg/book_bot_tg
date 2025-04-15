@@ -1,8 +1,11 @@
 from copy import deepcopy
+from functools import wraps
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
+from typing_extensions import ParamSpec, TypeVar, Callable
+
 from database.database import user_dict_template, users_db
 from filters.filters import IsDelBookmarkCallbackData, IsDigitCallbackData
 from keyboards.bookmarks_kb import create_bookmarks_keyboard, create_edit_keyboard
@@ -11,16 +14,27 @@ from lexicon.lexicon import LEXICON
 from services.file_handling import book
 
 router = Router()
+P = ParamSpec('P')
+T = TypeVar('T')
+
+# Декоратор для проверки и инициализации пользователя
+def ensure_user_in_db(func: Callable[P, T]) -> Callable[P, T]:
+    @wraps(func)
+    async def wrapper(message: Message, *args: P.args, **kwargs: P.kwargs) -> T:
+        user_id = message.from_user.id
+        if user_id not in users_db:
+            users_db[message.from_user.id] = deepcopy(user_dict_template)
+        return func(message, *args, **kwargs)
+    return wrapper
 
 
 # /start
 # Добавляет пользователя в базу данных, если его там еще не было
 # и отправляет приветственное сообщение
 @router.message(CommandStart())
+@ensure_user_in_db
 async def process_start_command(message: Message):
     await message.answer(LEXICON[message.text])
-    if message.from_user.id not in users_db:
-        users_db[message.from_user.id] = deepcopy(user_dict_template)
 
 
 # /help
